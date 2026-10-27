@@ -1,0 +1,8 @@
+# A project whose build script uses this package, as a user's would:
+# tests/run.sh builds and runs it with the fake pkg-config first on the PATH.
+[package]
+name = "fixture"
+version = "0.1.0"
+
+[build-dependencies]
+build = { path = "../.." }

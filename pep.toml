@@ -1,0 +1,10 @@
+[package]
+name = "build"
+version = "0.1.0"
+description = "Helpers for build scripts: compile C for the target, find libraries with pkg-config, print pep: instructions"
+license = "Apache-2.0"
+repository = "https://github.com/pep-lang/pepper-build"
+# The oldest Pepper toolchain that builds the package: CI also tests with
+# it, and `pepper package` skips a version whose minimum is newer than the
+# user's toolchain. Build scripts arrive in 0.11.0.
+minimum_toolchain = "0.11.0"
