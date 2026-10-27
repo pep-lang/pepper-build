@@ -11,6 +11,7 @@
 ##         return objects.is_ok() ? 0 : 1;
 ##     }
 
+import [Path] from io;
 import process;
 import "../emit" as emit;
 import "../env" as env;
@@ -36,6 +37,17 @@ import "../env" as env;
 ##   clang
 ## @panics if a `PEP_*` variable it reads is not set (outside a build script)
 export compile(sources: String[], flags: String[]): Result<String[]> {
+    var objects = Array<String>();
+    for (var index in 0..sources.count) {
+        var object = env.out_dir().join(_object_name(sources[index])).to_string();
+        var other = objects.find(object);
+        if (other.is_value()) {
+            return Result<String[]>.err(
+                $"cannot compile both '{sources[other.value()]}' and '{sources[index]}': each would make {object}; rename one"
+            );
+        }
+        objects.append(object);
+    }
     var clang = env.clang();
     if (clang.is_empty()) {
         return Result<String[]>.err("cannot compile C: the toolchain has no clang (PEP_CLANG is empty)");
@@ -45,33 +57,27 @@ export compile(sources: String[], flags: String[]): Result<String[]> {
     if (sysroot.is_value()) {
         common.append("--sysroot=" + sysroot.value());
     }
-    var objects = Array<String>();
-    for (var source in sources) {
-        var object = env.out_dir().join(_object_name(source)).to_string();
-        if (objects.contains(object)) {
-            return Result<String[]>.err($"cannot compile '{source}': another source also makes {object}; rename one");
-        }
+    for (var index in 0..sources.count) {
+        var source = sources[index];
         var arguments = common.copy();
         arguments.append_all(flags);
-        arguments.append_all(["-c", source, "-o", object]);
+        arguments.append_all(["-c", source, "-o", objects[index]]);
         var ran = process.Command(clang.value()).arguments(arguments).run();
         if (ran.is_err()) {
             return Result<String[]>.err($"cannot run {clang.value()}: {ran.error().message}");
         }
         if (!ran.value().status.success()) {
-            return Result<String[]>.err($"clang cannot compile '{source}':\n{ran.value().stderr}{ran.value().stdout}");
+            return Result<String[]>.err($"clang cannot compile '{source}':
+{ran.value().stderr}{ran.value().stdout}");
         }
-        objects.append(object);
-        emit.object(object);
+        emit.object(objects[index]);
         emit.rerun_if_changed(source);
     }
     return Result<String[]>.ok(objects);
 }
 
-# The object file name for `source`: its path with each separator, and the
-# drive's colon, made `_`, and `.o` for its extension.
+# The object file name for `source`: its path with `.o` for its file's
+# extension, and each separator, and the drive's colon, made `_`.
 _object_name(source: String): String {
-    var name = source.replace("\\", "_").replace("/", "_").replace(":", "_");
-    var dot = name.rfind(".");
-    return (dot > 0 ? name.substr_bytes(0, dot as ulong) : name) + ".o";
+    return Path(source).with_extension("o").to_string().replace("\\", "_").replace("/", "_").replace(":", "_");
 }
