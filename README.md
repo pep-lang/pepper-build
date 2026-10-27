@@ -97,14 +97,12 @@ on the `PATH`.
 ## Releasing
 
 CI (`.github/workflows/ci.yml`) runs the tests on Linux, macOS and
-Windows for every push to `main` and every pull request. Until Pepper
-0.11.0 is published it installs 0.11.0-dev (the workflow's
-`PEPPER_VERSION`), the first toolchain with build scripts, and skips the
-job that tests `minimum_toolchain`; once 0.11.0 is out, delete
-`PEPPER_VERSION` and both use releases. To release, set `version` in
-`pep.toml`, merge, then push the matching tag
-(`git tag v1.0.0 && git push origin v1.0.0`): CI tests the tag and
-publishes a GitHub release for it.
+Windows for every push to `main` and every pull request, with the newest
+Pepper release; a second job tests `minimum_toolchain` (0.11.0). To
+release, set `version` in `pep.toml`, merge, then push the matching tag
+(`git tag v1.0.0 && git push origin v1.0.0`): CI tests the tag,
+publishes a GitHub release for it, and adds its reference to the
+`gh-pages` branch.
 
 ## License
 

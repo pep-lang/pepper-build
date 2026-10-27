@@ -1,6 +1,7 @@
 # Tests the package on each push to main and each pull request, and on a
-# vX.Y.Z tag also publishes a GitHub release for that tag. Runs on
-# GitHub-hosted runners with the Pepper toolchain PEPPER_VERSION names,
+# vX.Y.Z tag also publishes a GitHub release for that tag and its
+# reference on the gh-pages branch, for GitHub Pages. Runs on
+# GitHub-hosted runners with the newest published Pepper toolchain,
 # installed with pep-lang/pepper's install scripts as a user installs it.
 #
 # Release: set `version` in pep.toml, merge, then
@@ -16,13 +17,6 @@ on:
 
 permissions:
   contents: read
-
-env:
-  # Build scripts arrive in 0.11.0, so until it is published the tests run
-  # with the build of Pepper's main, 0.11.0-dev. Once 0.11.0 is out, delete
-  # this variable: the tests then use the newest release, and the
-  # minimum-toolchain job tests 0.11.0.
-  PEPPER_VERSION: 0.11.0-dev
 
 jobs:
   test:
@@ -42,7 +36,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl -fsSL https://raw.githubusercontent.com/pep-lang/pepper/main/scripts/install.sh | sh -s -- ${PEPPER_VERSION:+--version "$PEPPER_VERSION"}
+          curl -fsSL https://raw.githubusercontent.com/pep-lang/pepper/main/scripts/install.sh | sh
           echo "$HOME/.pepper/bin" >> "$GITHUB_PATH"
 
       - name: Install Pepper (Windows)
@@ -50,7 +44,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         shell: pwsh
-        # The piped script reads PEPPER_VERSION for -Version.
         run: |
           irm https://raw.githubusercontent.com/pep-lang/pepper/main/scripts/install.ps1 | iex
           "$env:LOCALAPPDATA\pepper\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
@@ -77,12 +70,8 @@ jobs:
         run: |
           set -euo pipefail
           minimum="$(sed -nE 's/^minimum_toolchain *= *"([^"]+)".*/\1/p' pep.toml | head -1)"
-          if [ -n "${PEPPER_VERSION:-}" ]; then
-            echo "skipped: the tests run with Pepper $PEPPER_VERSION until $minimum is published (see PEPPER_VERSION above)"
-            minimum=""
-          fi
           echo "version=$minimum" >> "$GITHUB_OUTPUT"
-          [ -n "$minimum" ] || [ -n "${PEPPER_VERSION:-}" ] || echo "pep.toml names no minimum_toolchain: nothing to check"
+          [ -n "$minimum" ] || echo "pep.toml names no minimum_toolchain: nothing to check"
 
       - name: Install Pepper at the minimum
         if: steps.minimum.outputs.version != ''
@@ -124,3 +113,48 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+
+  # Adds the release's reference (`pepper doc package`) to the gh-pages
+  # branch, a folder per version, which GitHub Pages serves once it is
+  # turned on for that branch (Settings, Pages).
+  docs:
+    needs: release
+    # One at a time, so two tags pushed together both reach gh-pages.
+    concurrency:
+      group: gh-pages
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Pepper and mdBook
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MDBOOK_VERSION: v0.4.52
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/pep-lang/pepper/main/scripts/install.sh | sh
+          echo "$HOME/.pepper/bin" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/mdbook"
+          curl -fsSL "https://github.com/rust-lang/mdBook/releases/download/$MDBOOK_VERSION/mdbook-$MDBOOK_VERSION-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$RUNNER_TEMP/mdbook"
+          echo "$RUNNER_TEMP/mdbook" >> "$GITHUB_PATH"
+
+      - name: Publish the reference
+        run: |
+          set -euo pipefail
+          site="$RUNNER_TEMP/site"
+          if git ls-remote --exit-code --heads origin gh-pages; then
+            git fetch --depth 1 origin gh-pages
+            git worktree add --detach "$site" FETCH_HEAD
+          else
+            git worktree add --orphan -b gh-pages "$site"
+          fi
+          pepper doc package --site "$site"
+          git -C "$site" add -A
+          # A re-run for a tag already published has nothing to commit.
+          git -C "$site" diff --cached --quiet && exit 0
+          git -C "$site" -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -m "Reference for $GITHUB_REF_NAME"
+          git -C "$site" push origin HEAD:gh-pages
