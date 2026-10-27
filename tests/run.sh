@@ -25,7 +25,7 @@ PKG_CONFIG="$build/bin/pkg-config$exe" "$pepper" test -I "$build/packages" "$roo
 # The fixture: its build script finds `fake`, compiles c/answer.c with its
 # flags and links it; the program prints 40 + 2 and the build option's word.
 cd "$root/tests/fixture"
-PATH="$build/bin:$PATH" "$pepper" build --build "$build/fixture" -o "$build/fixture$exe" 2>"$build/errors" || {
+PATH="$build/bin:$PATH" "$pepper" build --build "$build/fixture-build" -o "$build/fixture$exe" 2>"$build/errors" || {
     cat "$build/errors" >&2
     exit 1
 }
